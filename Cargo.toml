@@ -12,3 +12,4 @@ resolver = "2"
 [workspace.dependencies]
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
+crossterm = "0.27.0"
