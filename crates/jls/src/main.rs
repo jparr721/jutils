@@ -3,7 +3,7 @@ use chrono::{DateTime, Local};
 use clap::Parser;
 use crossterm::terminal::size;
 use std::{fs, os::unix::fs::MetadataExt};
-use users::{get_group_by_gid, get_user_by_uid, Groups, User, Users};
+use users::{get_group_by_gid, get_user_by_uid};
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
