@@ -16,9 +16,33 @@ struct Args {
     #[clap(long, default_value_t = -1)]
     depth: i32,
 
+    /// Case-sensitive search.
+    #[clap(short, long, default_value_t = false)]
+    case_sensitive: bool,
+
     /// The query to search for
     #[clap(default_value = "")]
     query: String,
+}
+
+fn check_and_colorize_match(path: &str, query: &str, case_sensitive: bool) -> Option<String> {
+    let start = if !case_sensitive {
+        path.to_lowercase().find(&query.to_lowercase())
+    } else {
+        path.find(&query)
+    };
+
+    if let Some(start) = start {
+        let end = start + query.len();
+        Some(format!(
+            "{}{}{}",
+            &path[..start],
+            path[start..end].bright_red(),
+            &path[end..]
+        ))
+    } else {
+        None
+    }
 }
 
 fn find(args: Args) -> Result<String> {
@@ -28,17 +52,12 @@ fn find(args: Args) -> Result<String> {
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
         let path = entry.path().display().to_string();
-        if let Some(start) = path.to_lowercase().find(&args.query.to_lowercase()) {
-            let end = start + args.query.len();
-            let highlighted = format!(
-                "{}{}{}",
-                &path[..start],
-                path[start..end].bright_red(),
-                &path[end..]
-            );
-            ret.push(highlighted);
+        if let Some(matched) = check_and_colorize_match(&path, &args.query, args.case_sensitive) {
+            ret.push(matched);
         }
     }
+
+    ret.sort();
 
     Ok(ret.join("\n"))
 }
