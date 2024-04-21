@@ -88,7 +88,6 @@ fn ls(args: Args) -> Result<String> {
 
     let mut entries = {
         let all_files = fs::read_dir(path)?
-            .into_iter()
             .map(|entry| entry.unwrap().file_name().into_string().unwrap());
 
         if !args.all {
@@ -111,11 +110,11 @@ fn ls(args: Args) -> Result<String> {
                 .collect::<Vec<fs::Metadata>>();
             let modes = metadatas
                 .iter()
-                .map(|metadata| get_mode(metadata))
+                .map(get_mode)
                 .collect::<Vec<String>>();
             let nlinks = metadatas
                 .iter()
-                .map(|metadata| get_nlink(metadata))
+                .map(get_nlink)
                 .collect::<Vec<String>>();
             let owners = metadatas
                 .iter()
@@ -127,7 +126,7 @@ fn ls(args: Args) -> Result<String> {
                 .collect::<Vec<String>>();
             let sizes = metadatas
                 .iter()
-                .map(|metadata| get_size_bytes(metadata))
+                .map(get_size_bytes)
                 .collect::<Vec<String>>();
             let last_modified = metadatas
                 .iter()
