@@ -1,7 +1,12 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
+use chrono::{DateTime, Local};
 use clap::Parser;
 use crossterm::terminal::size;
-use std::fs;
+use std::{fs, os::unix::fs::MetadataExt};
+use users::{get_group_by_gid, get_user_by_uid, Groups, User, Users};
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -14,8 +19,63 @@ struct Args {
     list: bool,
 
     /// The path to list
-    #[clap(required = true)]
+    #[clap(default_value = ".")]
     path: String,
+}
+
+fn get_file_group(metadata: &fs::Metadata) -> Result<String> {
+    let gid = metadata.gid();
+    let group = get_group_by_gid(gid).context("Attempting to get group by gdi")?;
+    Ok(group.name().to_string_lossy().into())
+}
+
+fn get_file_owner(metadata: &fs::Metadata) -> Result<String> {
+    let uid = metadata.uid();
+    let user = get_user_by_uid(uid).context("Attempting to get user by uid")?;
+    Ok(user.name().to_string_lossy().into())
+}
+
+fn get_last_modified(metadata: &fs::Metadata) -> Result<String> {
+    let modified = metadata.modified()?;
+    let human_readable_time: DateTime<Local> = modified.into();
+    Ok(human_readable_time.format("%b %e %H:%M").to_string())
+}
+
+#[cfg(unix)]
+fn get_mode(metadata: &fs::Metadata) -> String {
+    let mode = metadata.permissions().mode();
+    fn mode_to_string(mode: u32, is_dir: bool) -> String {
+        let mut s = String::with_capacity(11);
+
+        s.push(if is_dir { 'd' } else { '-' });
+        s.push(if mode & 0o400 == 0o400 { 'r' } else { '-' });
+        s.push(if mode & 0o200 == 0o200 { 'w' } else { '-' });
+        s.push(if mode & 0o100 == 0o100 { 'x' } else { '-' });
+        s.push(if mode & 0o040 == 0o040 { 'r' } else { '-' });
+        s.push(if mode & 0o020 == 0o020 { 'w' } else { '-' });
+        s.push(if mode & 0o010 == 0o010 { 'x' } else { '-' });
+        s.push(if mode & 0o004 == 0o004 { 'r' } else { '-' });
+        s.push(if mode & 0o002 == 0o002 { 'w' } else { '-' });
+        s.push(if mode & 0o001 == 0o001 { 'x' } else { '-' });
+
+        s
+    }
+    mode_to_string(mode, metadata.is_dir())
+}
+
+#[cfg(unix)]
+fn get_nlink(metadata: &fs::Metadata) -> String {
+    metadata.nlink().to_string()
+}
+
+#[cfg(unix)]
+fn get_size_bytes(metadata: &fs::Metadata) -> String {
+    metadata.size().to_string()
+}
+
+#[cfg(not(unix))]
+fn get_metadata(path: &String) -> Result<String> {
+    Ok("".to_string())
 }
 
 fn ls(args: Args) -> Result<String> {
@@ -43,6 +103,59 @@ fn ls(args: Args) -> Result<String> {
     entries.sort();
 
     if args.list {
+        #[cfg(unix)]
+        {
+            let metadatas = entries
+                .iter()
+                .map(|entry| fs::metadata(entry).unwrap())
+                .collect::<Vec<fs::Metadata>>();
+            let modes = metadatas
+                .iter()
+                .map(|metadata| get_mode(metadata))
+                .collect::<Vec<String>>();
+            let nlinks = metadatas
+                .iter()
+                .map(|metadata| get_nlink(metadata))
+                .collect::<Vec<String>>();
+            let owners = metadatas
+                .iter()
+                .map(|metadata| get_file_owner(metadata).unwrap())
+                .collect::<Vec<String>>();
+            let groups = metadatas
+                .iter()
+                .map(|metadata| get_file_group(metadata).unwrap())
+                .collect::<Vec<String>>();
+            let sizes = metadatas
+                .iter()
+                .map(|metadata| get_size_bytes(metadata))
+                .collect::<Vec<String>>();
+            let last_modified = metadatas
+                .iter()
+                .map(|metadata| get_last_modified(metadata).unwrap())
+                .collect::<Vec<String>>();
+
+            let max_nlink_width = nlinks.iter().map(|nlink| nlink.len()).max().unwrap_or(0);
+            let max_owner_width = owners.iter().map(|owner| owner.len()).max().unwrap_or(0);
+            let max_group_width = groups.iter().map(|group| group.len()).max().unwrap_or(0);
+            let max_size_width = sizes.iter().map(|size| size.len()).max().unwrap_or(0);
+
+            Ok(entries
+                .into_iter()
+                .enumerate()
+                .map(|(i, entry)| {
+                    format!("{:<10} {:>width$} {:<owner_width$} {:<group_width$} {:>size_width$} {} {entry}",
+                            modes[i], nlinks[i], owners[i], groups[i], sizes[i], last_modified[i],
+                            entry = entry,
+                            width = max_nlink_width,
+                            owner_width = max_owner_width,
+                            group_width = max_group_width,
+                            size_width = max_size_width)
+                })
+                .collect::<Vec<String>>()
+                .join("\n"))
+        }
+
+        #[cfg(not(unix))]
         Ok(entries.join("\n"))
     } else {
         // Iterate over the terminal width
@@ -70,7 +183,9 @@ fn ls(args: Args) -> Result<String> {
                     }
                 }
             }
-            output.push('\n');
+            if row != rows - 1 {
+                output.push('\n');
+            }
         }
         Ok(output)
     }
@@ -79,6 +194,5 @@ fn ls(args: Args) -> Result<String> {
 fn main() {
     let args = Args::parse();
     let output = ls(args).unwrap();
-
     println!("{}", output);
 }

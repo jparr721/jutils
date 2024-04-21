@@ -9,3 +9,5 @@ edition = "2021"
 clap = { workspace = true }
 anyhow = { workspace = true }
 crossterm = { workspace = true }
+users = { workspace = true }
+chrono = { workspace = true }
