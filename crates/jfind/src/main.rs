@@ -27,7 +27,6 @@ struct Args {
     ignore_gitingore: bool,
 
     /// The query to search for
-    #[clap()]
     query: String,
 }
 
