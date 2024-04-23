@@ -13,3 +13,4 @@ users = { workspace = true }
 chrono = { workspace = true }
 rayon = "1.10.0"
 colored = { workspace = true }
+walkdir = "2.5.0"
