@@ -1,6 +1,7 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::Parser;
 use colored::Colorize;
+use ignore::gitignore::GitignoreBuilder;
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
@@ -13,7 +14,7 @@ struct Args {
     #[clap(short, long, default_value = ".")]
     directory: String,
 
-    /// The depth to search within (default is 10).
+    /// The depth to search within.
     #[clap(long, default_value_t = 10)]
     depth: usize,
 
@@ -21,8 +22,12 @@ struct Args {
     #[clap(short, long, default_value_t = false)]
     case_sensitive: bool,
 
+    /// Whether or not to ignore files in .gitignore
+    #[clap(short, long, default_value_t = false)]
+    ignore_gitingore: bool,
+
     /// The query to search for
-    #[clap(default_value = "")]
+    #[clap()]
     query: String,
 }
 
@@ -30,7 +35,7 @@ fn check_and_colorize_match(path: &str, query: &str, case_sensitive: bool) -> Op
     let start = if !case_sensitive {
         path.to_lowercase().find(&query.to_lowercase())
     } else {
-        path.find(&query)
+        path.find(query)
     };
 
     if let Some(start) = start {
@@ -49,13 +54,28 @@ fn check_and_colorize_match(path: &str, query: &str, case_sensitive: bool) -> Op
 fn find(args: Args) -> Result<String> {
     let directory = args.directory;
 
+    let mut ignore_builder = GitignoreBuilder::new(&directory);
+    if args.ignore_gitingore {
+        if let Some(e) = ignore_builder.add(format!("{}/.gitignore", directory)) {
+            bail!("Error parsing .gitignore: {e}");
+        }
+    }
+
+    let gitignore = ignore_builder.build()?;
+
     let mut ret = WalkDir::new(directory)
         .max_depth(args.depth)
         .into_iter()
         .filter_map(|e| e.ok())
         .par_bridge()
         .map(|e| e.path().display().to_string())
-        .filter_map(|path| check_and_colorize_match(&path, &args.query, args.case_sensitive))
+        .filter_map(|path| {
+            if gitignore.matched(&path, false).is_ignore() {
+                return None;
+            }
+
+            check_and_colorize_match(&path, &args.query, args.case_sensitive)
+        })
         .collect::<Vec<String>>();
 
     ret.sort();
