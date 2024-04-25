@@ -1,4 +1,6 @@
-use anyhow::{bail, Result};
+use std::{fs, path::PathBuf};
+
+use anyhow::{bail, ensure, Result};
 use clap::Parser;
 use colored::Colorize;
 use ignore::gitignore::GitignoreBuilder;
@@ -10,9 +12,9 @@ use walkdir::WalkDir;
 /// matching that query. Use --help for all flags.
 #[derive(Debug, Parser)]
 struct Args {
-    /// The directory to search within.
-    #[clap(short, long, default_value = ".")]
-    directory: String,
+    /// The place to search. Follows symlinks and can be a file or directory.
+    #[clap(long = "in", default_value = ".")]
+    in_: String,
 
     /// The depth to search within.
     #[clap(long, default_value_t = 10)]
@@ -50,9 +52,7 @@ fn check_and_colorize_match(path: &str, query: &str, case_sensitive: bool) -> Op
     }
 }
 
-fn find(args: Args) -> Result<String> {
-    let directory = args.directory;
-
+fn find_in_directory(directory: String, args: Args) -> Result<String> {
     let mut ignore_builder = GitignoreBuilder::new(&directory);
     if args.ignore_gitingore {
         if let Some(e) = ignore_builder.add(format!("{}/.gitignore", directory)) {
@@ -80,6 +80,53 @@ fn find(args: Args) -> Result<String> {
     ret.sort();
 
     Ok(ret.join("\n"))
+}
+
+fn find_in_file(filename: String, args: Args) -> Result<String> {
+    let contents = fs::read_to_string(&filename)?;
+    let mut ret = contents
+        .lines()
+        .enumerate()
+        .filter_map(|(i, line)| {
+            if let Some(colored_line) =
+                check_and_colorize_match(line, &args.query, args.case_sensitive)
+            {
+                Some((i, format!("{}:{}: {}", filename, i, colored_line)))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<(usize, String)>>();
+
+    ret.sort_by(|a, b| a.0.cmp(&b.0));
+
+    Ok(ret
+        .into_iter()
+        .map(|(_, line)| line)
+        .collect::<Vec<String>>()
+        .join("\n"))
+}
+
+fn find(args: Args) -> Result<String> {
+    let mut in_ = PathBuf::from(args.in_.clone());
+    let mut metadata = fs::metadata(&in_)?;
+
+    while metadata.file_type().is_symlink() {
+        in_ = fs::read_link(&in_)?;
+        metadata = fs::metadata(&in_)?;
+    }
+
+    ensure!(
+        metadata.is_dir() || metadata.is_file(),
+        "{:?} is not a file or directory",
+        in_
+    );
+
+    if metadata.is_dir() {
+        find_in_directory(in_.display().to_string(), args)
+    } else {
+        find_in_file(in_.display().to_string(), args)
+    }
 }
 
 fn main() {
