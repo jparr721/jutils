@@ -88,13 +88,8 @@ fn find_in_file(filename: String, args: Args) -> Result<String> {
         .lines()
         .enumerate()
         .filter_map(|(i, line)| {
-            if let Some(colored_line) =
-                check_and_colorize_match(line, &args.query, args.case_sensitive)
-            {
-                Some((i, format!("{}:{}: {}", filename, i, colored_line)))
-            } else {
-                None
-            }
+            check_and_colorize_match(line, &args.query, args.case_sensitive)
+                .map(|colored_line| (i, format!("{}:{}: {}", filename, i, colored_line)))
         })
         .collect::<Vec<(usize, String)>>();
 
