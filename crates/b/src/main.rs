@@ -1,10 +1,10 @@
-use anyhow::{bail, ensure, Result};
+use anyhow::{bail, Result};
 use clap::Parser;
 use colored::Colorize;
 use std::fs::{self, DirEntry};
 use std::io::{self, BufRead};
 use std::path::PathBuf;
-use std::process::{exit, Command, Stdio};
+use std::process::{Command, Stdio};
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -94,7 +94,7 @@ impl Project {
     }
 
     fn format_rust(&self) -> Result<()> {
-        let mut cmds = match self.project_type {
+        let cmds = match self.project_type {
             ProjectType::Rust => {
                 if self.work && self.name.as_str() == "hotshot" {
                     vec!["just", "async-std", "fmt_lint"]
