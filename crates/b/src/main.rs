@@ -3,7 +3,7 @@ use clap::Parser;
 use colored::Colorize;
 use std::fs::{self, DirEntry};
 use std::io::{self, BufRead};
-use std::path::PathBuf;
+use std::path::{Path};
 use std::process::{Command, Stdio};
 
 #[derive(Debug, Parser)]
@@ -178,7 +178,7 @@ impl Project {
     }
 }
 
-fn detect_work_project(current_dir: &PathBuf, paths: &Vec<DirEntry>) -> Option<String> {
+fn detect_work_project(current_dir: &Path, paths: &Vec<DirEntry>) -> Option<String> {
     let dirname = current_dir
         .file_name()
         .unwrap()
@@ -209,13 +209,12 @@ fn detect_work_project(current_dir: &PathBuf, paths: &Vec<DirEntry>) -> Option<S
 fn detect_project_type(paths: &Vec<DirEntry>) -> Option<ProjectType> {
     for entry in paths {
         if let Some(os_str) = entry.path().file_name() {
-            match os_str.to_str() {
-                Some(s) => match s.to_lowercase().as_str() {
+            if let Some(s) = os_str.to_str() {
+                match s.to_lowercase().as_str() {
                     "cargo.toml" => return Some(ProjectType::Rust),
                     "requirements.txt" | "pyproject.toml" => return Some(ProjectType::Python),
                     _ => {}
-                },
-                None => {}
+                }
             }
         }
 
@@ -231,7 +230,7 @@ fn detect_project_type(paths: &Vec<DirEntry>) -> Option<ProjectType> {
     None
 }
 
-fn find_project_name(current_dir: &PathBuf) -> &str {
+fn find_project_name(current_dir: &Path) -> &str {
     current_dir.file_name().unwrap().to_str().unwrap()
 }
 
@@ -250,18 +249,15 @@ fn main() -> Result<()> {
     // Get the project name
     let project = if let Some(name) = detect_work_project(&current_dir, &paths) {
         Project::new(&name, true, ProjectType::Rust)
+    } else if let Some(typ) = detect_project_type(&paths) {
+        Project::new(find_project_name(&current_dir), false, typ)
     } else {
-        if let Some(typ) = detect_project_type(&paths) {
-            Project::new(&find_project_name(&current_dir), false, typ)
-        } else {
-            bail!("Couldn't detect project type, or go an invalid project type.");
-        }
+        bail!("Couldn't detect project type, or go an invalid project type.");
     };
 
     if args.build {
         if args.verbose {
             println!("{}", format!("{}", project).blue());
-            println!("{}", format!("{}", "Initiating build".blue()));
         }
         project.build(args.release)?;
     }
