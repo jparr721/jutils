@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [[ $(basename $(pwd)) == "scripts" ]];
+then
+  echo "Run this from jutils instead"
+  exit 1
+fi
+
+cargo build --release
+
+for crate in "crates"/*; do
+  crate_name=$(basename "$crate")
+  mv "target/release/$crate_name" "$HOME/.local/bin"
+done
