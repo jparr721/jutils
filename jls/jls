@@ -72,7 +72,7 @@ def get_file_info(path: Path):
     group = grp.getgrgid(stats.st_gid).gr_name
     last_modified = time.strftime("%b %d %H:%M", time.localtime(stats.st_mtime))
     return FileInfo(
-        path.name,
+        path.name if not path.is_symlink() else f"{path.name} -> {path.readlink()}",
         str(owner),
         str(group),
         last_modified,
@@ -89,7 +89,7 @@ def format_for_terminal(ret: List[str]):
 def get_first_alnum(name: str):
     for i, c in enumerate(name):
         if c.isalnum():
-            return name[i:]
+            return name[i:].lower()
     else:
         return name
 
