@@ -217,7 +217,6 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to display the full path.",
     )
-    parser.add_argument("-temp", action="store_true")
     args = parser.parse_args()
 
     if not is_regex(args.query):
