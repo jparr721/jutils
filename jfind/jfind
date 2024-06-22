@@ -91,11 +91,11 @@ class Gitignore:
         )
 
 
-def highlight_match(text: str, pattern):
+def highlight_match(text: str, pattern, color):
     if match := re.search(pattern, text):
         start, end = match.span()
         highlighted = (
-            text[:start] + Colors.colorize(text[start:end], Colors.RED) + text[end:]
+            text[:start] + Colors.colorize(text[start:end], color) + text[end:]
         )
         return highlighted
 
@@ -120,16 +120,38 @@ def find_in_directory(path: Path, args):
         if depth > args.depth:
             return
 
+        dirs = []
+        files = []
         for entry in os.listdir(from_path):
+            if not args.show_hidden:
+                if entry.startswith("."):
+                    continue
             fullpath = from_path / entry
             if args.ignore_gitignore and gitignore.match(fullpath):
                 continue
 
-            if res := highlight_match(entry, query_pattern):
+            # I want these to be separate for better visual clarity.
+            if fullpath.is_dir():
+                dirs.append(fullpath)
+            else:
+                files.append(fullpath)
+
+        for file in files:
+            if res := highlight_match(
+                file.name,
+                query_pattern,
+                Colors.RED,
+            ):
                 results.append(os.path.join(from_path, res) + "\n")
 
-            if fullpath.is_dir():
-                recursive_walk(fullpath, depth + 1, results)
+        for dir in dirs:
+            if res := highlight_match(
+                dir.name,
+                query_pattern,
+                Colors.BLUE,
+            ):
+                results.append(os.path.join(from_path, res) + "\n")
+            recursive_walk(dir, depth + 1, results)
 
         return results
 
@@ -188,12 +210,14 @@ if __name__ == "__main__":
         add_help=True, description="A flexible find command."
     )
     parser.add_argument(
-        "query", help="The query to perform over the files (regex supported)."
+        "query",
+        default="*",
+        nargs="?",
+        help="The query to perform over the files (regex supported).",
     )
     parser.add_argument(
         "--input",
         default=".",
-        nargs="?",
         help="The directory or file to search within.",
     )
     parser.add_argument(
@@ -210,6 +234,12 @@ if __name__ == "__main__":
         "--ignore-gitignore",
         action="store_true",
         help="Whether to ignore .gitignore'd files.",
+    )
+    parser.add_argument(
+        "-H",
+        "--show-hidden",
+        action="store_true",
+        help="Whether to show files and folders that start with '.'",
     )
     parser.add_argument(
         "-F",
