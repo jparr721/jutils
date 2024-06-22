@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+
+import argparse
+from pathlib import Path
+import pwd
+import grp
+import time
+from dataclasses import dataclass
+from typing import List
+
+
+@dataclass
+class FileInfo:
+    name: str
+    owner: str
+    group: str
+    last_modified: str
+    nlink: str
+    mode: str
+    size: str
+
+    @property
+    def ignored(self) -> bool:
+        return self.name.startswith(".")
+
+    def group_sizes(self) -> List[int]:
+        return [
+            len(self.mode),
+            len(self.nlink),
+            len(self.owner),
+            len(self.group),
+            len(self.size),
+            len(self.last_modified),
+            1,
+        ]
+
+    def to_output(self, complete=False, spaces=[]) -> str:
+        if complete:
+            if len(spaces) < 7:
+                raise ValueError("Invalid spaces", spaces)
+            return " ".join(
+                [
+                    f"{self.mode:<{spaces[0]}}",
+                    f"{self.nlink:>{spaces[1]}}",
+                    f"{self.owner:<{spaces[2]}}",
+                    f"{self.group:<{spaces[3]}}",
+                    f"{self.size:>{spaces[4]}}",
+                    self.last_modified,
+                    self.name,
+                ]
+            )
+        return self.name
+
+
+def mode_to_string(is_dir: bool, mode: int):
+    s = "d" if is_dir else "-"
+    s += "r" if mode & 0o400 == 0o400 else "-"
+    s += "w" if mode & 0o200 == 0o200 else "-"
+    s += "x" if mode & 0o100 == 0o100 else "-"
+    s += "r" if mode & 0o040 == 0o040 else "-"
+    s += "w" if mode & 0o020 == 0o020 else "-"
+    s += "x" if mode & 0o010 == 0o010 else "-"
+    s += "r" if mode & 0o004 == 0o004 else "-"
+    s += "w" if mode & 0o002 == 0o002 else "-"
+    s += "x" if mode & 0o001 == 0o001 else "-"
+    return s
+
+
+def get_file_info(path: Path):
+    stats = path.stat() if not path.is_symlink() else path.lstat()
+    owner = pwd.getpwuid(stats.st_uid).pw_name
+    group = grp.getgrgid(stats.st_gid).gr_name
+    last_modified = time.strftime("%b %d %H:%M", time.localtime(stats.st_mtime))
+    return FileInfo(
+        path.name if not path.is_symlink() else f"{path.name} -> {path.readlink()}",
+        str(owner),
+        str(group),
+        last_modified,
+        str(stats.st_nlink),
+        mode_to_string(path.is_dir(), stats.st_mode),
+        str(stats.st_size),
+    )
+
+
+def format_for_terminal(ret: List[str]):
+    return " ".join(ret)
+
+
+def get_first_alnum(name: str):
+    for i, c in enumerate(name):
+        if c.isalnum():
+            return name[i:].lower()
+    else:
+        return name
+
+
+def do_ls(args):
+    directory = Path(args.directory)
+    files = directory.iterdir()
+
+    files = sorted(files, key=lambda x: get_first_alnum(x.name))
+
+    ret = []
+    sizes = []
+    for file in files:
+        info = get_file_info(file)
+        if info.ignored and not args.all:
+            continue
+
+        ret.append(info)
+        sizes.append(info.group_sizes())
+
+    group_sizes = [max(c) for c in zip(*sizes)]
+    ret = [info.to_output(args.list, group_sizes) for info in ret]
+
+    if args.list:
+        return "\n".join(ret)
+    return format_for_terminal(ret)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        add_help=True,
+        description="List information about the FILEs (the current directory by default)",
+    )
+    parser.add_argument("directory", default=".", nargs="?")
+    parser.add_argument("-a", "--all", action="store_true")
+    parser.add_argument("-l", "--list", action="store_true")
+    args = parser.parse_args()
+
+    print(do_ls(args))
