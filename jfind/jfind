@@ -4,7 +4,7 @@ import argparse
 import re
 import os
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 import fnmatch
 
 
@@ -19,8 +19,11 @@ class Colors:
     WHITE = "\033[97m"
     RESET = "\033[0m"
 
-    def colorize(string: str, color: str):
-        return f"{color}{string}{Colors.RESET}"
+    def colorize(string: str, color: str, reset=True):
+        if reset:
+            return f"{color}{string}{Colors.RESET}"
+        else:
+            return f"{color}{string}"
 
 
 class Gitignore:
@@ -83,11 +86,11 @@ class Gitignore:
 
         if "**" in pattern:
             parts = pattern.split("**")
-            left = parts[0]
-            right = parts[1]
-            if fnmatch.fnmatch(path, f"{left}*{right}"):
-                if "target" in path:
-                    return True
+            left = re.escape(parts[0])
+            right = re.escape(parts[1])
+            regex = re.compile(f"{left}.*{right}")
+            if regex.search(path):
+                return True
         return fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(
             os.path.basename(path), pattern
         )
@@ -95,15 +98,30 @@ class Gitignore:
 
 def highlight_match(text: str, pattern, color):
     if match := re.search(pattern, text):
-        start, end = match.span()
-        highlighted = (
-            text[:start] + Colors.colorize(text[start:end], color) + text[end:]
-        )
-        return highlighted
+        return highlight_subregion(text, *match.span(), color)
 
     # Otherwise return the raw text back
     return None
 
+def highlight_subregion(text: str, start, end, color):
+    if start > len(text) or end > len(text):
+        return None
+    return text[:start] + Colors.colorize(text[start:end], color) + text[end:]
+
+def highlight_all_subregions_in_line(line: str, pattern: str, color):
+    end = 0
+    for span in find_span_of_all_matches(line, pattern):
+        line = highlight_subregion(line, *span, color)
+        end = span[1] + 1
+    return line
+
+def find_span_of_all_matches(text: str, pattern: str) -> List[Tuple[int, int]]:
+    start = 0
+    while True:
+        start = text.find(pattern, start)
+        if start == -1: return
+        yield start, start + len(pattern)
+        start += len(pattern)
 
 def find_in_directory(path: Path, args):
     if args.full_path:
@@ -129,8 +147,9 @@ def find_in_directory(path: Path, args):
                 if entry.startswith("."):
                     continue
             fullpath = from_path / entry
-            if args.ignore_gitignore and gitignore.match(fullpath):
-                continue
+            if args.ignore_gitignore:
+                if gitignore.match(fullpath.resolve()):
+                    continue
 
             # I want these to be separate for better visual clarity.
             if fullpath.is_dir():
@@ -139,20 +158,35 @@ def find_in_directory(path: Path, args):
                 files.append(fullpath)
 
         for file in files:
-            if res := highlight_match(
-                file.name,
-                query_pattern,
-                Colors.RED,
-            ):
-                results.append(os.path.join(from_path, res) + "\n")
+            # If we're not grepping files, then append to the output.
+            if not args.grep_files:
+                if res := highlight_match(
+                    file.name,
+                    query_pattern,
+                    Colors.RED,
+                ):
+                    results.append(os.path.join(from_path, res) + "\n")
+            else:
+                # Otherwise, build the output from the file and its stored content
+                in_file_matches = find_in_file(file, args)
+                if len(in_file_matches) > 0:
+                    # First, append the heading of the file (so it's easier to see what we're scanning in.)
+                    results.append(Colors.colorize(file, Colors.BLUE) + "\n")
+
+                    # Then, append the lines.
+                    results.extend(in_file_matches)
+
 
         for dir in dirs:
-            if res := highlight_match(
-                dir.name,
-                query_pattern,
-                Colors.BLUE,
-            ):
-                results.append(os.path.join(from_path, res) + "\n")
+            # If we aren't grepping through the files themselves, then we'll
+            # append the directories to the output.
+            if not args.grep_files:
+                if res := highlight_match(
+                    dir.name,
+                    query_pattern,
+                    Colors.BLUE,
+                ):
+                    results.append(os.path.join(from_path, res) + "\n")
             recursive_walk(dir, depth + 1, results)
 
         return results
@@ -161,14 +195,19 @@ def find_in_directory(path: Path, args):
     recursive_walk(path, 1, results)
     return results
 
-
-def find_in_file(path: Path, args):
+def find_in_file(path: Path, args) -> List[str]:
+    # Strip regex terms
+    pattern_word = re.sub(r"[^\w]", '', args.query)
     query_pattern = fnmatch.translate(args.query)
     results = []
-    with open(path, "r") as f:
-        for ii, line in enumerate(f.readlines()):
-            if m := highlight_match(line, query_pattern):
-                results.append(f"{ii}:{m.strip()}")
+    try:
+        with open(path, "r") as f:
+            for ii, line in enumerate(f.readlines()):
+                if m := highlight_match(line, query_pattern, Colors.BLACK):
+                    results.append(f"{ii}:{highlight_all_subregions_in_line(m.strip(), pattern_word, Colors.RED)}")
+    except UnicodeDecodeError as ude:
+        # Skip unicode errors
+        pass
     return results
 
 
@@ -221,6 +260,7 @@ if __name__ == "__main__":
         "--input",
         default=".",
         help="The directory or file to search within.",
+        type=Path,
     )
     parser.add_argument(
         "-d", "--depth", default=10, help="The depth to search to.", type=int
@@ -230,6 +270,17 @@ if __name__ == "__main__":
         "--case-sensitive",
         action="store_true",
         help="Perform a case-sensitive match.",
+    )
+    parser.add_argument(
+        "--exact",
+        action="store_true",
+        help="Perform an exact match.",
+    )
+    parser.add_argument(
+        "-G",
+        "--grep-files",
+        action="store_true",
+        help="Search within all files for the query (does not work with --input on a file).",
     )
     parser.add_argument(
         "-I",
@@ -251,7 +302,11 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if not is_regex(args.query):
+    if not is_regex(args.query) and not args.exact:
         args.query = f"*{args.query}*"
+
+    if args.input.is_file() and args.grep_files:
+        print(Colors.colorize("cannot set --input with a file type and -G", Colors.RED))
+        exit(1)
 
     print("".join(find(args)), end="")
