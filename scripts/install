@@ -8,9 +8,5 @@ then
   exit 1
 fi
 
-cargo build --release
-
-for crate in "crates"/*; do
-  crate_name=$(basename "$crate")
-  mv "target/release/$crate_name" "$HOME/.local/bin"
-done
+ln -s $(pwd)/jls/jls $HOME/.local/bin
+ln -s $(pwd)/jfind/jfind $HOME/.local/bin
