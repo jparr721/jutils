@@ -140,8 +140,10 @@ def size_human_readable(size: int) -> str:
         return Colors.colorize(f"{adjusted:.1f}", Colors.GREEN)
     if mag > 2:
         return Colors.colorize(f"{adjusted:.1f}{SIZES[mag]}", Colors.RED)
-    else:
+    if 1 < mag <= 2:
         return Colors.colorize(f"{adjusted:.1f}{SIZES[mag]}", Colors.YELLOW)
+    else:
+        return Colors.colorize(f"{adjusted:.1f}{SIZES[mag]}", Colors.GREEN)
 
 
 def colorize_path(path: Path, as_list=False):
@@ -152,7 +154,7 @@ def colorize_path(path: Path, as_list=False):
             return Colors.colorize(f"{path.name}", Colors.MAGENTA)
         else:
             return Colors.colorize(f"{path.name} -> {path.readlink()}", Colors.MAGENTA)
-    return Colors.colorize(path.name, Colors.CYAN)
+    return Colors.colorize(path.name, Colors.WHITE)
 
 
 def get_file_info(path: Path, human_readable_size=False, as_list=False):
