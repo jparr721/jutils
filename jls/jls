@@ -43,10 +43,7 @@ class FileInfo:
     nlink: str
     mode: str
     size: str
-
-    @property
-    def ignored(self) -> bool:
-        return self.name.startswith(".")
+    ignored: bool = False
 
     def group_sizes(self) -> List[int]:
         return [
@@ -173,6 +170,7 @@ def get_file_info(path: Path, human_readable_size=False, as_list=False):
         Colors.colorize(str(stats.st_size), Colors.GREEN)
         if not human_readable_size
         else size_human_readable(stats.st_size),
+        path.name.startswith(".")
     )
 
 
@@ -198,7 +196,7 @@ def do_ls(args):
     sizes = []
     for file in files:
         info = get_file_info(file, args.human_readable, args.list)
-        if info.ignored and not args.all:
+        if info.ignored:
             continue
 
         ret.append(info)
