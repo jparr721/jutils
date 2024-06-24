@@ -198,7 +198,7 @@ def do_ls(args):
     sizes = []
     for file in files:
         info = get_file_info(file, args.human_readable, args.list)
-        if info.ignored:
+        if info.ignored and not args.all:
             continue
 
         ret.append(info)
