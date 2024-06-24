@@ -103,25 +103,33 @@ def highlight_match(text: str, pattern, color):
     # Otherwise return the raw text back
     return None
 
+
 def highlight_subregion(text: str, start, end, color):
     if start > len(text) or end > len(text):
         return None
     return text[:start] + Colors.colorize(text[start:end], color) + text[end:]
 
+
 def highlight_all_subregions_in_line(line: str, pattern: str, color):
-    end = 0
-    for span in find_span_of_all_matches(line, pattern):
-        line = highlight_subregion(line, *span, color)
-        end = span[1] + 1
-    return line
+    combined = []
+    for i, span in enumerate(find_span_of_all_matches(line, pattern)):
+        start, end = span
+        if i == 0:
+            combined.append(Colors.colorize(line[:start], Colors.BLACK))
+        combined.append(Colors.colorize(line[start:end], color))
+    combined.append(Colors.colorize(line[end:], Colors.BLACK))
+    return "".join(combined)
+
 
 def find_span_of_all_matches(text: str, pattern: str) -> List[Tuple[int, int]]:
     start = 0
     while True:
         start = text.find(pattern, start)
-        if start == -1: return
+        if start == -1:
+            return
         yield start, start + len(pattern)
         start += len(pattern)
+
 
 def find_in_directory(path: Path, args):
     if args.full_path:
@@ -176,7 +184,6 @@ def find_in_directory(path: Path, args):
                     # Then, append the lines.
                     results.extend(in_file_matches)
 
-
         for dir in dirs:
             # If we aren't grepping through the files themselves, then we'll
             # append the directories to the output.
@@ -195,16 +202,20 @@ def find_in_directory(path: Path, args):
     recursive_walk(path, 1, results)
     return results
 
+
 def find_in_file(path: Path, args) -> List[str]:
     # Strip regex terms
-    pattern_word = re.sub(r"[^\w]", '', args.query)
+    pattern_word = re.sub(r"[^\w]", "", args.query)
     query_pattern = fnmatch.translate(args.query)
     results = []
     try:
         with open(path, "r") as f:
             for ii, line in enumerate(f.readlines()):
-                if m := highlight_match(line, query_pattern, Colors.BLACK):
-                    results.append(f"{ii}:{highlight_all_subregions_in_line(m.strip(), pattern_word, Colors.RED)}")
+                # Match directly, don't highlight so we can pick out the subregion.
+                if match := re.search(query_pattern, line):
+                    results.append(
+                        f"{ii}:{highlight_all_subregions_in_line(line, pattern_word, Colors.RED)}"
+                    )
     except UnicodeDecodeError as ude:
         # Skip unicode errors
         pass
