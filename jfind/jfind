@@ -214,7 +214,7 @@ def find_in_file(path: Path, args) -> List[str]:
                 # Match directly, don't highlight so we can pick out the subregion.
                 if match := re.search(query_pattern, line):
                     results.append(
-                        f"{ii}:{highlight_all_subregions_in_line(line, pattern_word, Colors.RED)}"
+                        f"{ii+1}:{highlight_all_subregions_in_line(line, pattern_word, Colors.RED)}"
                     )
     except UnicodeDecodeError as ude:
         # Skip unicode errors
