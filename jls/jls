@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
 import argparse
-from pathlib import Path
-import pwd
 import grp
-import time
 import math
-from dataclasses import dataclass
-from typing import List
+import pwd
 import re
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import List
 
 
 class Colors:
@@ -128,6 +128,10 @@ def mode_to_string(is_dir: bool, mode: int):
     return s
 
 
+def is_executable(mode: int):
+    return mode & 0o100 == 0o100 or mode & 0o010 == 0o010 or mode & 0o001 == 0o001
+
+
 def size_human_readable(size: int) -> str:
     SIZES = ["", "K", "M", "G", "T", "P"]
     if size == 0:
@@ -146,7 +150,7 @@ def size_human_readable(size: int) -> str:
         return Colors.colorize(f"{adjusted:.1f}{SIZES[mag]}", Colors.GREEN)
 
 
-def colorize_path(path: Path, as_list=False):
+def colorize_path(path: Path, as_list=False, is_executable=False):
     if path.is_dir():
         return Colors.colorize(path.name, Colors.RED)
     elif path.is_symlink():
@@ -154,6 +158,8 @@ def colorize_path(path: Path, as_list=False):
             return Colors.colorize(f"{path.name}", Colors.MAGENTA)
         else:
             return Colors.colorize(f"{path.name} -> {path.readlink()}", Colors.MAGENTA)
+    elif is_executable:
+        return Colors.colorize(path.name, Colors.GREEN)
     return Colors.colorize(path.name, Colors.WHITE)
 
 
@@ -163,7 +169,7 @@ def get_file_info(path: Path, human_readable_size=False, as_list=False):
     group = grp.getgrgid(stats.st_gid).gr_name
     last_modified = time.strftime("%b %d %H:%M", time.localtime(stats.st_mtime))
     return FileInfo(
-        colorize_path(path, as_list),
+        colorize_path(path, as_list, is_executable(stats.st_mode)),
         Colors.colorize(str(owner), Colors.YELLOW),
         Colors.colorize(str(group), Colors.YELLOW),
         Colors.colorize(last_modified, Colors.BLUE),
@@ -172,7 +178,7 @@ def get_file_info(path: Path, human_readable_size=False, as_list=False):
         Colors.colorize(str(stats.st_size), Colors.GREEN)
         if not human_readable_size
         else size_human_readable(stats.st_size),
-        path.name.startswith(".")
+        path.name.startswith("."),
     )
 
 
